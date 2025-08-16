@@ -1,0 +1,1104 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>量子五目並べ（元ネタ：QuizKnock様）</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<style>
+  :root{
+    --board: min(92vmin, 780px);
+    --pad:   calc(var(--board) * 0.045);
+    --grid:  calc(var(--board) - var(--pad) * 2);
+    --step:  calc(var(--grid) / 18);
+    --line:  2px;
+    --wood: #d6b370;
+    --ink:  #000;
+    font-family: -apple-system, system-ui, "Hiragino Sans", "Noto Sans JP", "Noto Sans", sans-serif;
+  }
+  html,body{ height:100%; }
+  body{ margin:0; display:grid; place-items:center; min-height:100dvh; background:#f5f5f7; color:#111; }
+  .app{ width:min(96vw, 860px); padding:12px; }
+  h1{ font-size:18px; margin:6px 0 10px; }
+
+  .bar{ display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:8px; }
+  .pill{ padding:6px 10px; border-radius:999px; background:#fff; border:1px solid #ddd; }
+  .radio{ padding:8px 10px; border:1px solid #bbb; border-radius:10px; background:#fff; cursor:pointer; }
+  .radio.active{ border-color:#111; box-shadow:0 0 0 2px rgba(0,0,0,.06) inset; font-weight:700; }
+  .radio[disabled]{ opacity:.35; cursor:not-allowed; }
+  .btn{ padding:10px 14px; border-radius:10px; border:1px solid #ccc; background:#fff; cursor:pointer; font-weight:600; }
+  .btn-danger{ border-color:#c00; }
+  .btn-primary{ border-color:#111; background:#111; color:#fff; }
+  .btn-ghost{ background:transparent; border-color:#999; color:#111; }
+
+  .legend{ display:flex; gap:6px; flex-wrap:wrap; margin:6px 0 10px; }
+  .chip{ border:1px solid #ccc; border-radius:999px; padding:6px 10px; display:flex; align-items:center; gap:6px; background:#fff; }
+  .dot{ width:14px; height:14px; border-radius:50%; display:inline-block; border:1px solid #aaa; }
+  .dot.black{ background:#111; border-color:#000; }
+  .dot.white{ background:#fff; }
+  .dot.q90{ background:#232323; border-color:#121212; }
+  .dot.q70{ background:#555; border-color:#444; }
+  .dot.q30{ background:#e0e0e0; }
+  .dot.q10{ background:#fafafa; border-color:#e6e6e6; }
+
+  .status{ margin:8px 0; }
+  .hint{ color:#555; font-size:12px; }
+
+  /* 盤（背景19×19本） */
+  .boardWrap{
+    width: var(--board); height: var(--board);
+    background: var(--wood);
+    border-radius: 8px;
+    display:grid; place-items:center; position: relative;
+  }
+  .grid{
+    position:absolute; inset: var(--pad);
+    width: var(--grid); height: var(--grid);
+    background: var(--wood);
+    background-image:
+      linear-gradient(to bottom, transparent calc(100% - var(--line)), var(--ink) calc(100% - var(--line)), var(--ink) 100%),
+      linear-gradient(to right,  transparent calc(100% - var(--line)), var(--ink) calc(100% - var(--line)), var(--ink) 100%),
+      repeating-linear-gradient(to bottom, var(--ink) 0 var(--line), transparent var(--line) var(--step)),
+      repeating-linear-gradient(to right,  var(--ink) 0 var(--line), transparent var(--line) var(--step));
+    background-position: 0 0, 0 0, 0 0, 0 0;
+    background-repeat: no-repeat, no-repeat, no-repeat, no-repeat;
+  }
+
+  .stone{
+    position:absolute;
+    width: calc(var(--step) * .84);
+    height: calc(var(--step) * .84);
+    left: 0; top: 0;
+    transform: translate(-50%, -50%);
+    border-radius:50%;
+    display:grid; place-items:center;
+    font-size: min(12px, calc(var(--step) * .33));
+    font-weight:700;
+    box-shadow: inset 0 1px 2px rgba(0,0,0,.2);
+    border:2px solid transparent;
+  }
+  .quantum.q90{ background:linear-gradient(135deg,#1e1e1e,#3a3a3a); color:#f8f8f8; border-color:#202020; }
+  .quantum.q70{ background:linear-gradient(135deg,#4a4a4a,#6a6a6a); color:#fafafa; border-color:#4b4b4b; }
+  .quantum.q30{ background:linear-gradient(135deg,#d5d5d5,#ececec); color:#222;    border-color:#d0d0d0; }
+  .quantum.q10{ background:linear-gradient(135deg,#f2f2f2,#ffffff); color:#222;    border-color:#e0e0e0; }
+  .black{ background:#111; color:#fff; border-color:#000; }
+  .white{ background:#fff; color:#111; border-color:#ccc; }
+
+  /* 上部バー（勝利/不成立/観測テキスト） */
+  .topBar{
+    position: fixed;
+    left: 50%;
+    top: calc(env(safe-area-inset-top) + 6px);
+    transform: translateX(-50%);
+    width: min(96vw, 860px);
+    padding: 10px 12px;
+    background:#000; color:#fff;
+    border: 1px solid #222;
+    border-radius: 12px;
+    box-shadow: 0 6px 16px rgba(0,0,0,.35);
+    display: none;
+    gap: 10px; align-items: center; justify-content: space-between;
+    z-index: 20;
+  }
+  .topBar.show{ display:flex; }
+  .topBarBtns{ display:flex; gap:8px; flex-wrap:wrap; }
+  .topBar .btn{ background: transparent; color:#fff; border-color:#666; }
+  .topBar .btn:hover{ border-color:#999; }
+  .topBar .btn-primary{ background:#fff; color:#000; border-color:#fff; }
+
+  /* 追加：バー自体が押せるモード */
+  .topBar.tapToProceed { cursor: pointer; user-select: none; }
+
+  .overlay{ position: fixed; inset:0; background: rgba(0,0,0,0); display:none; z-index:19; }
+  .overlay.show{ display:block; }
+
+  /* 観測ボタン（完全透明：枠と文字のみ）＋ 残数バッジ */
+  .observeBtns{
+    position:absolute; inset:0;
+    display:none; align-items:center; justify-content:center;
+    z-index:30;
+    pointer-events:none;
+  }
+  .observeBtns.show{ display:flex; }
+  .ob-stack{ display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+  .ob-btn{
+    pointer-events:auto;
+    -webkit-tap-highlight-color: transparent;
+    padding:10px 16px;
+    border-radius:12px;
+    font-weight:800;
+    letter-spacing:.02em;
+    border:2px solid rgba(255,255,255,0.95);
+    background: transparent;
+    color:#fff;
+    box-shadow:none;
+    backdrop-filter:none;
+  }
+  .ob-btn.ob-yes{ border-color: rgba(255,255,255,1); }
+  .ob-btn:active{ transform: translateY(1px); }
+  .ob-remaining{
+    pointer-events:none;
+    color:#fff;
+    border:2px solid rgba(255,255,255,0.85);
+    border-radius:999px;
+    padding:8px 12px;
+    font-weight:800;
+    letter-spacing:.02em;
+  }
+  .ob-remaining .num{ font-variant-numeric: tabular-nums; }
+
+  /* ルール表示 */
+  .rules {
+    margin-top: 14px;
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 12px;
+    padding: 10px 12px;
+    line-height: 1.65;
+  }
+  .rules details { margin: 0; }
+  .rules summary {
+    cursor: pointer;
+    list-style: none;
+    font-weight: 800;
+    letter-spacing: .02em;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .rules summary::-webkit-details-marker { display: none; }
+  .rules .caret {
+    width: 0; height: 0; border-left: 6px solid transparent; border-right: 6px solid transparent;
+    border-top: 8px solid #111; transform: rotate(0deg); transition: transform .15s ease;
+  }
+  .rules details[open] .caret { transform: rotate(180deg); }
+  .rules h3 { font-size: 14px; margin: 12px 0 6px; }
+  .rules ul, .rules ol { margin: 6px 0 0 1.2em; padding: 0; }
+  .rules li { margin: 2px 0; }
+  .rules .mono { font-feature-settings: "tnum"; }
+</style>
+</head>
+<body>
+<div class="app">
+  <h1>量子五目並べ（元ネタ：QuizKnock様）</h1>
+
+  <div class="bar">
+    <div class="pill"><b>ターン:</b> <span id="turn">先手（黒側）</span></div>
+    <div class="pill"><b>観測残:</b> 先手 <span id="obs1">5</span> / 後手 <span id="obs2">5</span></div>
+    <div class="pill" id="rulePill">石制限: 交互モード（90⇄70 / 10⇄30）</div>
+  </div>
+
+  <div class="legend">
+    <span class="chip"><span class="dot q90"></span>Q90（黒寄り）</span>
+    <span class="chip"><span class="dot q70"></span>Q70</span>
+    <span class="chip"><span class="dot q30"></span>Q30</span>
+    <span class="chip"><span class="dot q10"></span>Q10（白寄り）</span>
+    <span class="chip"><span class="dot black"></span>黒（先手の勝ち色）</span>
+    <span class="chip"><span class="dot white"></span>白（後手の勝ち色）</span>
+  </div>
+
+  <div class="bar" id="controls">
+    <button class="btn" id="toggleAlt">交互モード: ON</button>
+    <span id="autoStonePill" class="pill"></span>
+    <span id="manualSelect" style="display:none;"></span>
+    <button class="btn btn-ghost" id="cpuToggle">CPU: ON（後手）</button>
+    <button class="btn btn-danger" id="resetBtn">リセット</button>
+  </div>
+
+  <div class="status">
+    <div id="msg" class="pill" style="display:inline-block;">盤の交点をタップしてください（石は自動）。</div>
+    <div class="hint">観測の問いは上部バー、選択肢は碁盤上の透明ボタンで表示します。</div>
+  </div>
+
+  <div class="boardWrap">
+    <div id="grid" class="grid" aria-label="19x19 board"></div>
+
+    <!-- 観測ボタン（はい／いいえ：完全透明）＋ 残数バッジ -->
+    <div id="observeBtns" class="observeBtns" role="group" aria-label="観測の選択肢">
+      <div class="ob-stack">
+        <button id="obYes" class="ob-btn ob-yes">はい</button>
+        <button id="obNo"  class="ob-btn ob-no">いいえ</button>
+        <span id="obRemain" class="ob-remaining" aria-hidden="true">残 <span id="obRemainNum" class="num">5</span></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ルール -->
+ <div class="rules">
+  <details>
+    <summary><span class="caret"></span>ルール（タップで展開）</summary>
+    <div>
+      <h3>基本</h3>
+        <p style="margin:.3em 0 0;color:#666;font-size:12px;">※本作はQuizKnockを元ネタにした非公式のファンメイド作品です。</p>
+      <ul>
+        <li>盤面は <b>19×19</b>、交点に置く。</li>
+        <li>石は4種類：<span class="mono">Q90（黒90%）/ Q70（黒70%）/ Q30（黒30%）/ Q10（黒10%）</span>。</li>
+        <li>担当：先手（黒側）は <b>Q90・Q70</b>、後手（白側）は <b>Q30・Q10</b> を使用。</li>
+      </ul>
+
+      <h3>石の選び方</h3>
+      <ul>
+        <li>交互モード：先手は <span class="mono">Q90→Q70→Q90…</span>、後手は <span class="mono">Q10→Q30→Q10…</span> と自動交互。</li>
+        <li>手動モード：<b>先手はQ90連続不可</b>／<b>後手はQ10連続不可</b>。</li>
+      </ul>
+
+      <h3>観測</h3>
+      <ul>
+        <li>各プレイヤーは<strong>最大5回</strong>まで観測可能。観測で盤上の量子石が一斉に黒/白へ確定。</li>
+        <li>観測直後に<strong>5連</strong>ができていた陣営が勝利。同時成立は<strong>観測者勝ち</strong>。</li>
+        <li>不成立ならその場で全石を再び量子状態に戻し続行（ターン交代）。</li>
+      </ul>
+
+      <h3>CPUモード</h3>
+      <ul>
+        <li>操作バーの <b>「CPU: ON（後手）」</b> ボタンで切替。</li>
+        <li><b>ON:</b> 後手（白側）をCPUが担当。四の連のブロック、開三・飛び三の対処、勝ち筋拡大、必要に応じた観測を行います。</li>
+        <li><b>OFF:</b> 両陣営とも人間が指します。</li>
+        <li>サドンデス観測中は、CPU側でも自動で観測を実行します。</li>
+      </ul>
+    </div>
+  </details>
+</div>
+
+
+<!-- 上部バー（勝利/不成立/観測テキスト） -->
+<div id="topBar" class="topBar" role="dialog" aria-live="polite" aria-atomic="true">
+  <div id="topBarText">メッセージ</div>
+  <div class="topBarBtns" id="topBarBtns"></div>
+</div>
+<div id="overlay" class="overlay"></div>
+
+<script>
+/* ====== 定数 ====== */
+const SIZE = 19, WINLEN = 5;
+const DIRS = [[0,1],[1,0],[1,1],[1,-1]];
+const PLAYERS = {
+  P1: { name: "先手（黒側）", stones: ["Q90","Q70"], colorCollapse:"black" },
+  P2: { name: "後手（白側）", stones: ["Q10","Q30"], colorCollapse:"white" },
+};
+const STONE_INFO = {
+  Q90: { pBlack: 0.90, label: "90", qClass:"q90" },
+  Q70: { pBlack: 0.70, label: "70", qClass:"q70" },
+  Q30: { pBlack: 0.30, label: "30", qClass:"q30" },
+  Q10: { pBlack: 0.10, label: "10", qClass:"q10" },
+};
+
+/* ====== CPU設定 ====== */
+const CPU = {
+  enabled: true,
+  side: "P2",
+  observeMyThr: 0.45,
+  observeBothMin: 0.22,
+  blockWeight: 1.08,
+  forkBonus: 0.15,
+  fourCountBonus: 0.05,
+  autoProceedMs: 480,
+  josekiHelper: true
+};
+
+/* ====== 状態 ====== */
+let state = {
+  turn: "P1",
+  obs: { P1: 5, P2: 5 },
+  board: Array.from({length: SIZE}, ()=> Array.from({length: SIZE}, ()=> null)),
+  altMode: true,
+  placedCount: { P1: 0, P2: 0 },
+  selectedStone: null,
+  lastTypeUsed: { P1: null, P2: null },
+  gameOver: false,
+  suddenDeath: false,
+  waitingChoice: false,
+  waitingTapToProceed: false
+};
+
+/* ====== DOM ====== */
+const gridEl = document.getElementById("grid");
+const msgEl = document.getElementById("msg");
+const turnEl = document.getElementById("turn");
+const obs1El = document.getElementById("obs1");
+const obs2El = document.getElementById("obs2");
+const rulePill = document.getElementById("rulePill");
+const toggleAltBtn = document.getElementById("toggleAlt");
+const autoStonePill = document.getElementById("autoStonePill");
+const manualSelectHolder = document.getElementById("manualSelect");
+const resetBtn = document.getElementById("resetBtn");
+const topBar = document.getElementById("topBar");
+const topBarText = document.getElementById("topBarText");
+const topBarBtns = document.getElementById("topBarBtns");
+const overlay = document.getElementById("overlay");
+const observeBtns = document.getElementById("observeBtns");
+const obYes = document.getElementById("obYes");
+const obNo  = document.getElementById("obNo");
+const obRemainNum = document.getElementById("obRemainNum");
+const cpuToggleBtn = document.getElementById("cpuToggle");
+
+/* ====== 上部バー ====== */
+// 第5引数 onBarTap を追加：バー自体のタップで進行できる
+function topBarShow(text, buttons = [], useOverlay=false, onOverlayTap=null, onBarTap=null){
+  topBarText.textContent = text;
+  topBarBtns.innerHTML = "";
+
+  for(const b of buttons){
+    const btn = document.createElement("button");
+    btn.className = "btn" + (b.primary ? " btn-primary" : "");
+    btn.textContent = b.label;
+    btn.onclick = b.onClick;
+    topBarBtns.appendChild(btn);
+  }
+
+  // バー自体のタップで進めるか
+  if (onBarTap) {
+    topBar.classList.add("tapToProceed");
+    topBar.onclick = (e)=>{
+      if (e.target && e.target.closest('button')) return; // ボタン押下は別処理
+      onBarTap();
+    };
+  } else {
+    topBar.classList.remove("tapToProceed");
+    topBar.onclick = null;
+  }
+
+  topBar.classList.add("show");
+
+  // オーバーレイ（バー外のタップで進む）
+  if (useOverlay){
+    overlay.classList.add("show");
+    overlay.onclick = ()=>{
+      overlay.onclick = null;
+      overlay.classList.remove("show");
+      onOverlayTap && onOverlayTap();
+    };
+  } else {
+    overlay.classList.remove("show");
+    overlay.onclick = null;
+  }
+}
+function topBarHide(){
+  topBar.classList.remove("show", "tapToProceed");
+  overlay.classList.remove("show");
+  overlay.onclick = null;
+  topBar.onclick = null;
+}
+function setMessage(s){ msgEl.textContent=s; }
+function setTurnLabel(){ turnEl && (turnEl.textContent = state.turn==="P1" ? "先手（黒側）" : "後手（白側）"); }
+function updateObsLabels(){ obs1El.textContent=state.obs.P1; obs2El.textContent=state.obs.P2; }
+
+/* ====== 描画 ====== */
+function render(){
+  gridEl.querySelectorAll('.stone').forEach(n=>n.remove());
+  const rect = gridEl.getBoundingClientRect();
+  const step = rect.width / (SIZE - 1);
+  for(let r=0;r<SIZE;r++){
+    for(let c=0;c<SIZE;c++){
+      const cell = state.board[r][c];
+      if(!cell) continue;
+      const s = document.createElement('div');
+      if(cell.collapsedColor==="black") s.className="stone black";
+      else if(cell.collapsedColor==="white") s.className="stone white";
+      else { s.className="stone quantum "+STONE_INFO[cell.type].qClass; s.textContent=STONE_INFO[cell.type].label; }
+      s.style.left = `${c*step}px`;
+      s.style.top  = `${r*step}px`;
+      gridEl.appendChild(s);
+    }
+  }
+  setTurnLabel(); updateObsLabels(); buildControls();
+}
+
+/* ====== 入力（人間） ====== */
+gridEl.addEventListener('click', (e)=>{
+  if(state.gameOver || state.suddenDeath || state.waitingChoice || state.waitingTapToProceed) return;
+  if(isCpuTurn()) return;
+
+  const rect = gridEl.getBoundingClientRect();
+  const step = rect.width / (SIZE - 1);
+  const x = e.clientX - rect.left, y = e.clientY - rect.top;
+  const col = Math.round(x / step), row = Math.round(y / step);
+  if(col < 0 || col >= SIZE || row < 0 || row >= SIZE) return;
+  if(state.board[row][col] !== null){ setMessage("その交点は使えません。"); return; }
+
+  const stoneType = selectStoneTypeForTurn(state.turn);
+  if(!stoneType) return;
+
+  placeStone(row, col, stoneType, false);
+  showObserveChoice(); // 人間は確認UI
+});
+
+/* ====== 石種選択 ====== */
+function getAutoStone(turn){
+  const k = state.placedCount[turn];
+  if(turn === "P1") return (k % 2 === 0) ? "Q90" : "Q70";
+  return (k % 2 === 0) ? "Q10" : "Q30";
+}
+function selectStoneTypeForTurn(turn){
+  if(state.altMode) return getAutoStone(turn);
+  if(!state.selectedStone){ setMessage("先に置く石の種類を選んでください。"); return null; }
+  const ban = (turn==="P1" && state.selectedStone==="Q90") || (turn==="P2" && state.selectedStone==="Q10");
+  if(ban && state.lastTypeUsed[turn] === state.selectedStone){
+    setMessage("その石は連続使用できません。"); return null;
+  }
+  return state.selectedStone;
+}
+function allowedStonesForTurn(turn){
+  if(state.altMode) return [ getAutoStone(turn) ];
+  const all = PLAYERS[turn].stones.slice();
+  return all.filter(t=>{
+    if(turn==="P1" && t==="Q90" && state.lastTypeUsed[turn]==="Q90") return false;
+    if(turn==="P2" && t==="Q10" && state.lastTypeUsed[turn]==="Q10") return false;
+    return true;
+  });
+}
+function placeStone(row, col, stoneType, byCpu){
+  state.board[row][col] = { type: stoneType, owner: state.turn, collapsedColor: null };
+  if(state.altMode){
+    state.placedCount[state.turn]++;
+  }else{
+    state.lastTypeUsed[state.turn] = stoneType;
+    if(!byCpu) state.selectedStone = null;
+  }
+  render();
+}
+
+/* ====== 観測の問い（人間用UI） ====== */
+let obYesHandler=null, obNoHandler=null;
+function openObserveButtons(onYes, onNo){
+  if(obYesHandler) obYes.removeEventListener('click', obYesHandler);
+  if(obNoHandler)  obNo .removeEventListener('click',  obNoHandler);
+  obYesHandler = ()=> onYes && onYes();
+  obNoHandler  = ()=> onNo  && onNo();
+  obYes.addEventListener('click', obYesHandler, {once:true});
+  obNo .addEventListener('click',  obNoHandler,  {once:true});
+  observeBtns.classList.add('show');
+}
+function closeObserveButtons(){ observeBtns.classList.remove('show'); }
+function showObserveChoice(){
+  const can = state.obs[state.turn] > 0;
+  state.waitingChoice = true;
+  if(can){
+    if(obRemainNum) obRemainNum.textContent = String(state.obs[state.turn]); // 残数を表示
+    topBarShow("観測しますか？");
+    openObserveButtons(
+      ()=>{ state.waitingChoice=false; closeObserveButtons(); topBarHide(); observe({consume:true}); },
+      ()=>{ state.waitingChoice=false; closeObserveButtons(); topBarHide(); endTurn(); }
+    );
+  }else{
+    topBarShow("観測回数が残っていません。", [
+      {label:"OK", primary:true, onClick: ()=>{ topBarHide(); endTurn(); }}
+    ]);
+  }
+}
+
+/* ====== 盤ユーティリティ ====== */
+function inBounds(r,c){ return r>=0&&r<SIZE&&c>=0&&c<SIZE; }
+
+/* 所有連の長さ（オーナー基準） */
+function lineLenOwned(turn, r, c, dr, dc){
+  let cnt=1;
+  let rr=r+dr, cc=c+dc;
+  while(inBounds(rr,cc) && state.board[rr][cc] && state.board[rr][cc].owner===turn){ cnt++; rr+=dr; cc+=dc; }
+  rr=r-dr; cc=c-dc;
+  while(inBounds(rr,cc) && state.board[rr][cc] && state.board[rr][cc].owner===turn){ cnt++; rr-=dr; cc-=dc; }
+  return cnt;
+}
+
+/* その手で自石6連以上（オーバーライン）になるか */
+function wouldCreateOverlineFor(turn, r, c){
+  if(state.board[r][c] !== null) return false;
+  for(const [dr,dc] of DIRS){
+    const len = lineLenOwned(turn, r, c, dr, dc);
+    if(len >= 6) return true;
+  }
+  return false;
+}
+
+/* 盤上に自分の所有n連が存在するか */
+function hasOwnedRunAtLeast(turn, n){
+  for(let r=0;r<SIZE;r++) for(let c=0;c<SIZE;c++){
+    const cell = state.board[r][c];
+    if(!cell || cell.owner!==turn) continue;
+    for(const [dr,dc] of DIRS){
+      const pr=r-dr, pc=c-dc;
+      if(inBounds(pr,pc) && state.board[pr][pc] && state.board[pr][pc].owner===turn) continue;
+      let cnt=0, rr=r, cc=c;
+      while(inBounds(rr,cc) && state.board[rr][cc] && state.board[rr][cc].owner===turn){
+        cnt++; if(cnt>=n) return true; rr+=dr; cc+=dc;
+      }
+    }
+  }
+  return false;
+}
+
+/* ====== スライディング窓 ====== */
+function forEachWindow5(cb){
+  for(const [dr,dc] of DIRS){
+    const maxR = SIZE - (dr?4:0), maxC = SIZE - (dc?4:0);
+    for(let r=0;r<maxR;r++) for(let c=0;c<maxC;c++){
+      const cells = []; for(let k=0;k<5;k++) cells.push([r+dr*k,c+dc*k]); cb(cells, dr, dc);
+    }
+  }
+}
+function forEachWindow6(cb){
+  for(const [dr,dc] of DIRS){
+    const maxR = SIZE - (dr?5:0), maxC = SIZE - (dc?5:0);
+    for(let r=0;r<maxR;r++) for(let c=0;c<maxC;c++){
+      const cells = []; for(let k=0;k<6;k++) cells.push([r+dr*k,c+dc*k]); cb(cells, dr, dc);
+    }
+  }
+}
+function windowStats(cells, myTurn){
+  const oppTurn = (myTurn==="P1")?"P2":"P1";
+  let my=0, opp=0, emp=0; const empties=[]; const owners=[];
+  for(const [r,c] of cells){
+    const cell = state.board[r][c];
+    if(!cell){ emp++; empties.push([r,c]); owners.push(null); continue; }
+    owners.push(cell.owner);
+    if(cell.owner===myTurn) my++;
+    else if(cell.owner===oppTurn) opp++;
+    else emp++;
+  }
+  return {my, opp, emp, empties, owners};
+}
+function contiguousRuns(owners, who){
+  let current=0, spans=[];
+  for(let i=0;i<owners.length;i++){
+    if(owners[i]===who){ current++; }
+    else{ if(current>0) spans.push([i-current, i-1]); current=0; }
+  }
+  if(current>0) spans.push([owners.length-current, owners.length-1]);
+  return spans;
+}
+
+/* ====== パターン検出 ====== */
+function dedupMoves(list, keepCells=false){
+  const seen=new Set(), out=[];
+  for(const m of list){
+    const key = m.r+"_"+m.c;
+    if(seen.has(key)) continue;
+    seen.add(key);
+    if(keepCells) out.push(m); else out.push({r:m.r,c:m.c,reason:m.reason});
+  }
+  return out.filter(m=> state.board[m.r][m.c]===null );
+}
+function findOpponentFours(myTurn){
+  const res=[];
+  forEachWindow5((cells)=>{
+    const s = windowStats(cells, myTurn);
+    if(s.opp===4 && s.emp===1 && s.my===0){ const [r,c]=s.empties[0]; res.push({r,c,reason:"block-four"}); }
+  });
+  return dedupMoves(res);
+}
+function findMyMakeFive(myTurn){
+  const res=[];
+  forEachWindow5((cells)=>{
+    const s = windowStats(cells, myTurn);
+    if(s.my===4 && s.emp===1 && s.opp===0){ const [r,c]=s.empties[0]; res.push({r,c,cells,reason:"make-five"}); }
+  });
+  return dedupMoves(res,true);
+}
+function findOpponentBrokenOpenThrees(myTurn){
+  const res=[];
+  forEachWindow6((cells)=>{
+    const s = windowStats(cells, myTurn);
+    if(s.my>0 || s.opp!==3 || s.emp!==3) return;
+    const owners = s.owners;
+    if(owners[0]!==null || owners[5]!==null) return;
+    const internal = owners.slice(1,5);
+    const internalEmptyIdxs = internal.map((v,i)=>v===null?i:-1).filter(i=>i>=0);
+    if(internalEmptyIdxs.length!==1) return;
+    const idx1 = internalEmptyIdxs[0]+1;
+    const [r,c] = cells[idx1];
+    res.push({r,c, reason:"block-broken3"});
+  });
+  return dedupMoves(res);
+}
+function findOpponentOpenThrees(myTurn){
+  const oppTurn = (myTurn==="P1")?"P2":"P1";
+  const res=[];
+  forEachWindow5((cells)=>{
+    const s = windowStats(cells, myTurn);
+    if(s.opp===3 && s.emp===2 && s.my===0){
+      const runs = contiguousRuns(s.owners, oppTurn);
+      for(const [a,b] of runs){
+        if(b-a+1===3){
+          const left=a-1, right=b+1;
+          if(left>=0 && right<5 && s.owners[left]===null && s.owners[right]===null){
+            const [lr,lc] = cells[left];
+            const [rr,rc] = cells[right];
+            res.push({r:lr, c:lc, reason:"block-open3"});
+            res.push({r:rr, c:rc, reason:"block-open3"});
+          }
+        }
+      }
+    }
+  });
+  return dedupMoves(res);
+}
+function findMyOpenThrees(myTurn){
+  const res=[];
+  forEachWindow5((cells)=>{
+    const s = windowStats(cells, myTurn);
+    if(s.my===3 && s.emp===2 && s.opp===0){
+      const runs = contiguousRuns(s.owners, myTurn);
+      for(const [a,b] of runs){
+        if(b-a+1===3){
+          const left=a-1, right=b+1;
+          if(left>=0 && right<5 && s.owners[left]===null && s.owners[right]===null){
+            const [lr,lc] = cells[left];
+            const [rr,rc] = cells[right];
+            res.push({r:lr, c:lc, reason:"extend-open3"});
+            res.push({r:rr, c:rc, reason:"extend-open3"});
+          }
+        }
+      }
+    }
+  });
+  return dedupMoves(res);
+}
+
+/* ====== 観測関連（確率） ====== */
+function pColorForCell(cell, color){
+  if(cell.collapsedColor) return (cell.collapsedColor===color)?1:0;
+  const pB = STONE_INFO[cell.type].pBlack;
+  return (color==="black") ? pB : (1-pB);
+}
+function probWindowAllColor(cells, color){
+  let p=1;
+  for(const [r,c] of cells){
+    const cell = state.board[r][c];
+    if(!cell) return 0;
+    p *= pColorForCell(cell, color);
+    if(p===0) return 0;
+  }
+  return p;
+}
+function bestOwnedFiveProb(turn){
+  const color = PLAYERS[turn].colorCollapse;
+  let best=0;
+  forEachWindow5((cells)=>{
+    for(const [r,c] of cells){
+      const cell = state.board[r][c];
+      if(!cell || cell.owner!==turn) return;
+    }
+    const p = probWindowAllColor(cells, color);
+    if(p>best) best=p;
+  });
+  return best;
+}
+function bestProbAtWithCandidate(r,c,type, color){
+  let best=0;
+  for(const [dr,dc] of DIRS){
+    for(let s=-4; s<=0; s++){
+      const r0=r+dr*s, c0=c+dc*s, r5=r0+dr*4, c5=c0+dc*4;
+      if(!inBounds(r0,c0)||!inBounds(r5,c5)) continue;
+      let p=1, owned=true;
+      for(let k=0;k<5;k++){
+        const rr=r0+dr*k, cc=c0+dc*k;
+        const isMe = (rr===r && cc===c);
+        const cell = isMe ? {type, owner: state.turn, collapsedColor:null} : state.board[rr][cc];
+        if(!cell || cell.owner!==state.turn){ owned=false; break; }
+        p *= pColorForCell(cell, color);
+        if(p===0) break;
+      }
+      if(owned && p>best) best=p;
+    }
+  }
+  return best;
+}
+
+/* ====== 観測者タグ（★追加） ====== */
+function getObserverTag(){
+  return state.turn === "P1" ? "【黒側の観測】" : "【白側の観測】";
+}
+
+/* ====== 勝敗・観測 ====== */
+function hasFive(color){
+  for(const [dr,dc] of DIRS){
+    for(let r=0;r<SIZE;r++)for(let c=0;c<SIZE;c++){
+      let ok=true;
+      for(let k=0;k<5;k++){
+        const rr=r+dr*k, cc=c+dc*k;
+        if(!inBounds(rr,cc)){ ok=false; break; }
+        const cell=state.board[rr][cc];
+        if(!cell||cell.collapsedColor!==color){ ok=false; break; }
+      }
+      if(ok) return true;
+    }
+  }
+  return false;
+}
+function hasAnyOccupiedRunOfAtLeast(n){
+  for(const [dr,dc] of DIRS){
+    for(let r=0;r<SIZE;r++)for(let c=0;c<SIZE;c++){
+      let cnt=0, rr=r, cc=c;
+      while(inBounds(rr,cc)&&state.board[rr][cc]!==null){ cnt++; rr+=dr; cc+=dc; if(cnt>=n) return true; }
+    }
+  }
+  return false;
+}
+
+function observe({consume=true} = {}){
+  if(state.gameOver) return;
+
+  if(consume){
+    if(state.obs[state.turn]<=0) return;
+    state.obs[state.turn]--;
+  }
+
+  // 確定
+  for(let r=0;r<SIZE;r++)for(let c=0;c<SIZE;c++){
+    const cell = state.board[r][c]; if(!cell) continue;
+    cell.collapsedColor = (Math.random() < STONE_INFO[cell.type].pBlack) ? "black" : "white";
+  }
+  render();
+
+  const tag = getObserverTag(); // ★ 観測者側の表記
+  const hasB=hasFive("black"), hasW=hasFive("white");
+  if(hasB||hasW){
+    let text;
+    if(hasB&&hasW) text = `${tag} 両色5連成立！観測者の勝ち（${state.turn==="P1"?"先手":"後手"}）`;
+    else if(hasB)  text = `${tag} 黒の5連成立！先手（黒側）の勝ち`;
+    else           text = `${tag} 白の5連成立！後手（白側）の勝ち`;
+    return gameEndTopBar(text);
+  }
+
+  // 不成立 → 量子に戻し次へ
+  const proceed = ()=>{
+    for(let r=0;r<SIZE;r++)for(let c=0;c<SIZE;c++){
+      const cell=state.board[r][c]; if(cell) cell.collapsedColor=null;
+    }
+    state.waitingTapToProceed = false;
+    topBarHide();
+    endTurn();
+  };
+  state.waitingTapToProceed = true;
+  topBarShow(`${tag} 不成立　タップして次へ`, [], true, proceed, proceed);
+}
+
+function gameEndTopBar(text){
+  state.gameOver = true;
+  topBarShow(text, [{label:"新しく始める", primary:true, onClick: ()=>{ topBarHide(); resetGame(); maybeCpuTurn(); }}]);
+}
+function endTurn(){
+  state.turn = (state.turn==="P1") ? "P2" : "P1";
+  setMessage(state.altMode ? "盤の交点をタップしてください（石は自動）。" : "石を選んでから交点をタップしてください。");
+  render();
+  maybeEnterSuddenDeath();
+  maybeCpuTurn();
+}
+function maybeEnterSuddenDeath(){
+  if(state.gameOver) return;
+  if(state.obs.P1===0 && state.obs.P2===0){
+    if(!hasAnyOccupiedRunOfAtLeast(WINLEN)){
+      return gameEndTopBar("観測回数使い切り＆5連以上の占有線なし。仕切り直し。");
+    }
+    state.suddenDeath=true; render();
+    if(isCpuTurn()){
+      observe({consume:false});
+    }else{
+      topBarShow("サドンデス観測開始：観測のみで決着まで続行", [
+        {label:"観測する", primary:true, onClick: ()=>{ topBarHide(); observe({consume:false}); }}
+      ]);
+    }
+  }
+}
+
+/* ====== CPU ====== */
+function isCpuTurn(){ return CPU.enabled && state.turn===CPU.side && !state.gameOver && !state.suddenDeath; }
+function maybeCpuTurn(){
+  if(!isCpuTurn() || state.waitingChoice || state.waitingTapToProceed) return;
+  setTimeout(cpuTakeTurn, 200);
+}
+function afterCpuPlaced(my, myColor){
+  if(hasOwnedRunAtLeast(my, 5)){
+    if(state.obs[my] > 0){ observe({consume:true}); return; }
+    return endTurn();
+  }
+  cpuObserveDecisionAfter(myColor);
+}
+function cpuTakeTurn(){
+  if(!isCpuTurn() || state.gameOver) return;
+
+  const my = state.turn;
+  const myColor = PLAYERS[my].colorCollapse;
+
+  // 1) 相手の四をブロック（オーバーライン回避）
+  {
+    const cand = findOpponentFours(my).filter(m=>!wouldCreateOverlineFor(my, m.r, m.c));
+    if(cand.length){
+      const {r,c} = chooseCentral(cand);
+      const t = selectStoneTypeForTurn(my);
+      placeStone(r,c,t,true);
+      return afterCpuPlaced(my, myColor);
+    }
+  }
+
+  // 2) 自分の“所有5”を作る（オーバーライン回避）
+  {
+    const makeFives = findMyMakeFive(my);
+    const types = allowedStonesForTurn(my);
+    let best=null;
+    for(const mv of makeFives){
+      if(wouldCreateOverlineFor(my, mv.r, mv.c)) continue;
+      for(const t of types){
+        const p = bestProbAtWithCandidate(mv.r, mv.c, t, myColor);
+        if(!best || p>best.p) best = {r:mv.r,c:mv.c,type:t,p};
+      }
+    }
+    if(best){
+      placeStone(best.r,best.c,best.type,true);
+      return afterCpuPlaced(my, myColor);
+    }
+  }
+
+  // 3) 相手の飛び三をブロック
+  {
+    const cand = findOpponentBrokenOpenThrees(my).filter(m=>!wouldCreateOverlineFor(my, m.r, m.c));
+    if(cand.length){
+      const {r,c} = chooseCentral(cand);
+      const t = selectStoneTypeForTurn(my);
+      placeStone(r,c,t,true);
+      return afterCpuPlaced(my, myColor);
+    }
+  }
+
+  // 4) 相手の開三をブロック
+  {
+    const cand = findOpponentOpenThrees(my).filter(m=>!wouldCreateOverlineFor(my, m.r, m.c));
+    if(cand.length){
+      const {r,c} = chooseCentral(cand);
+      const t = selectStoneTypeForTurn(my);
+      placeStone(r,c,t,true);
+      return afterCpuPlaced(my, myColor);
+    }
+  }
+
+  // 5) 序盤ヘルパ（白） ※オーバーライン防止
+  {
+    const joseki = openingBookWhite();
+    if(joseki && !wouldCreateOverlineFor(my, joseki.r, joseki.c)){
+      const t = selectStoneTypeForTurn(my);
+      placeStone(joseki.r, joseki.c, t, true);
+      return afterCpuPlaced(my, myColor);
+    }
+  }
+
+  // 6) 攻めフォーク
+  {
+    const forkCand = bestAttackingForkMove(my);
+    if(forkCand){
+      placeStone(forkCand.r, forkCand.c, forkCand.type, true);
+      return afterCpuPlaced(my, myColor);
+    }
+  }
+
+  // 7) 自分の開三を伸ばす
+  {
+    const cand = findMyOpenThrees(my).filter(m=>!wouldCreateOverlineFor(my, m.r, m.c));
+    if(cand.length){
+      const {r,c} = chooseCentral(cand);
+      const t = selectStoneTypeForTurn(my);
+      placeStone(r,c,t,true);
+      return afterCpuPlaced(my, myColor);
+    }
+  }
+
+  // 8) ユーティリティ探索（オーバーライン回避）
+  {
+    const t = selectStoneTypeForTurn(my);
+    const best = searchByUtilityWithThreat_NoOverline(t, my, myColor);
+    if(best){
+      placeStone(best.r,best.c,t,true);
+      return afterCpuPlaced(my, myColor);
+    }
+  }
+
+  // 9) フォールバック：中心寄り（必要ならオーバーライン許容）
+  {
+    const empties=[];
+    for(let r=0;r<SIZE;r++)for(let c=0;c<SIZE;c++) if(!state.board[r][c]) empties.push({r,c});
+    let opts = empties.filter(p=>!wouldCreateOverlineFor(my,p.r,p.c));
+    if(!opts.length) opts = empties;
+    if(opts.length){
+      const {r,c} = chooseCentral(opts);
+      const t2 = selectStoneTypeForTurn(my);
+      placeStone(r,c,t2,true);
+      return afterCpuPlaced(my, myColor);
+    }
+  }
+}
+function openingBookWhite(){
+  if(!CPU.josekiHelper) return null;
+  if(state.turn!=="P2") return null;
+  const myPlaced = state.placedCount.P2;
+  if(myPlaced>=2) return null;
+  const blacks=[];
+  for(let r=0;r<SIZE;r++)for(let c=0;c<SIZE;c++){
+    const cell = state.board[r][c];
+    if(cell && cell.owner==="P1") blacks.push({r,c, d:centerDist2(r,c)});
+  }
+  if(!blacks.length) return null;
+  blacks.sort((a,b)=>a.d-b.d);
+  const target = blacks[0];
+  const cand = [[-1,0],[0,1],[1,0],[0,-1]]
+    .map(([dr,dc])=>({r:target.r+dr, c:target.c+dc}))
+    .filter(p=> inBounds(p.r,p.c) && state.board[p.r][p.c]===null);
+  if(cand.length){
+    cand.sort((a,b)=> centerDist2(a.r,a.c)-centerDist2(b.r,b.c));
+    return cand[0];
+  }
+  return null;
+}
+function cpuObserveDecisionAfter(myColor){
+  if(state.obs[state.turn] <= 0){ endTurn(); return; }
+  const pMine = bestOwnedFiveProb(state.turn);
+  const pOpp  = bestOwnedFiveProb(state.turn==="P1"?"P2":"P1");
+  if(pMine >= CPU.observeMyThr){ observe({consume:true}); return; }
+  if(pMine >= CPU.observeBothMin && pOpp >= CPU.observeBothMin){ observe({consume:true}); return; }
+  endTurn();
+}
+
+/* ====== 脅威カウント/評価 ====== */
+function countThreatsAfterMove(turn, r, c, type){
+  const saved = state.board[r][c];
+  state.board[r][c] = {type, owner: turn, collapsedColor: null};
+
+  const opp = (turn==="P1")?"P2":"P1";
+  let myMakeFive=0, myFour=0, myOpen3=0;
+
+  forEachWindow5((cells)=>{
+    const s = windowStats(cells, turn);
+    if(s.my===5){ myMakeFive++; return; }
+    if(s.my===4 && s.emp===1 && s.opp===0){ myFour++; return; }
+    if(s.my===3 && s.emp===2 && s.opp===0){
+      const runs = contiguousRuns(s.owners, turn);
+      for(const [a,b] of runs){
+        if(b-a+1===3){
+          const left=a-1, right=b+1;
+          if(left>=0 && right<5 && s.owners[left]===null && s.owners[right]===null){ myOpen3++; break; }
+        }
+      }
+    }
+  });
+
+  const myBestP  = bestOwnedFiveProb(turn);
+  const oppBestP = bestOwnedFiveProb(opp);
+
+  state.board[r][c] = saved;
+  const fork = (myOpen3>=2) || (myFour>=2);
+  return { myMakeFive, myFour, myOpen3, myBestP, oppBestP, fork };
+}
+function searchByUtilityWithThreat_NoOverline(type, my, myColor){
+  let best=null;
+  for(let r=0;r<SIZE;r++){
+    for(let c=0;c<SIZE;c++){
+      if(state.board[r][c]) continue;
+      if(wouldCreateOverlineFor(my, r, c)) continue;
+      const th = countThreatsAfterMove(my, r, c, type);
+      let util = th.myBestP - CPU.blockWeight*th.oppBestP;
+      if(th.fork) util += CPU.forkBonus;
+      util += th.myFour * CPU.fourCountBonus;
+      util += th.myOpen3 * (CPU.fourCountBonus * 0.6);
+      util += centerBias(r,c) * 0.0005;
+      if(!best || util>best.util) best={r,c,util};
+    }
+  }
+  return best;
+}
+function bestAttackingForkMove(turn){
+  const types = allowedStonesForTurn(turn);
+  let best=null;
+  for(let r=0;r<SIZE;r++)for(let c=0;c<SIZE;c++){
+    if(state.board[r][c]) continue;
+    if(wouldCreateOverlineFor(turn, r, c)) continue;
+    for(const t of types){
+      const th = countThreatsAfterMove(turn, r, c, t);
+      if(th.fork || th.myFour>=1){
+        const score = (th.fork? 2:0) + th.myFour*0.5 + th.myOpen3*0.25 + th.myBestP*0.8 - th.oppBestP*0.6 + centerBias(r,c)*0.05;
+        if(!best || score>best.score) best = {r,c,type:t,score};
+      }
+    }
+  }
+  return best;
+}
+
+/* ====== 共通ヘルパ ====== */
+function centerDist2(r,c){ return (r-(SIZE-1)/2)**2 + (c-(SIZE-1)/2)**2; }
+function centerBias(r,c){
+  const cx=(SIZE-1)/2, cy=(SIZE-1)/2;
+  const d = Math.hypot(r-cx, c-cy);
+  const maxd = Math.hypot(cx, cy);
+  return 1 - d/maxd;
+}
+function chooseCentral(moves){
+  let best=null, bestD=1e9;
+  for(const m of moves){
+    const d = centerDist2(m.r,m.c);
+    if(d<bestD){ best=m; bestD=d; }
+  }
+  return best;
+}
+
+/* ====== UI：交互/手動切替・CPU切替・リセット ====== */
+function buildControls(){
+  if(state.altMode){
+    manualSelectHolder.style.display = "none";
+    autoStonePill.style.display = "inline-block";
+    const st = getAutoStone(state.turn);
+    autoStonePill.textContent = `この手の石: ${st}（黒${Math.round(STONE_INFO[st].pBlack*100)}%）`;
+  }else{
+    autoStonePill.style.display = "none";
+    manualSelectHolder.style.display = "inline-block";
+    manualSelectHolder.innerHTML = "";
+    const wrap = document.createElement("span");
+    for(const t of PLAYERS[state.turn].stones){
+      const b = document.createElement("button");
+      b.className = "radio";
+      b.textContent = `${t}（黒${Math.round(STONE_INFO[t].pBlack*100)}%）`;
+      const banned = (state.turn==="P1" && t==="Q90" || state.turn==="P2" && t==="Q10")
+                    && state.lastTypeUsed[state.turn] === t;
+      b.disabled = banned || state.suddenDeath || state.waitingTapToProceed || state.waitingChoice || isCpuTurn();
+      b.classList.toggle("active", state.selectedStone === t);
+      b.onclick = ()=> { state.selectedStone = t; buildControls(); };
+      wrap.appendChild(b);
+    }
+    manualSelectHolder.appendChild(wrap);
+  }
+}
+toggleAltBtn.onclick = ()=>{
+  state.altMode = !state.altMode;
+  toggleAltBtn.textContent = `交互モード: ${state.altMode ? "ON" : "OFF"}`;
+  rulePill.textContent = state.altMode
+    ? "石制限: 交互モード（90⇄70 / 10⇄30）"
+    : "石制限: 先手Q90連続不可／後手Q10連続不可";
+  setMessage(state.altMode ? "盤の交点をタップしてください（石は自動）。" : "石を選んでから交点をタップしてください。");
+  buildControls(); maybeCpuTurn();
+};
+cpuToggleBtn.onclick = ()=>{
+  CPU.enabled = !CPU.enabled;
+  cpuToggleBtn.textContent = `CPU: ${CPU.enabled? "ON（後手）":"OFF"}`;
+  maybeCpuTurn();
+};
+resetBtn.onclick = resetGame;
+function resetGame(){
+  state={
+    turn:"P1",
+    obs:{P1:5,P2:5},
+    board:Array.from({length:SIZE},()=>Array(SIZE).fill(null)),
+    altMode:true,
+    placedCount:{P1:0,P2:0},
+    selectedStone:null,
+    lastTypeUsed:{P1:null,P2:null},
+    gameOver:false, suddenDeath:false,
+    waitingChoice:false, waitingTapToProceed:false
+  };
+  topBarHide(); observeBtns.classList.remove('show');
+  toggleAltBtn.textContent = "交互モード: ON";
+  rulePill.textContent = "石制限: 交互モード（90⇄70 / 10⇄30）";
+  setMessage("盤の交点をタップしてください（石は自動）。");
+  render(); maybeCpuTurn();
+}
+
+/* ====== 起動 ====== */
+setMessage("盤の交点をタップしてください（石は自動）。");
+render();
+maybeCpuTurn();
+</script>
+</body>
+</html>
